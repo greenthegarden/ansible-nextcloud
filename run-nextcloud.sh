@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
 
-docker-compose -f nextcloud.yaml up
+#docker-compose -f nextcloud.yaml up
+
+ansible-playbook nextcloud-ansible.yaml

@@ -1,0 +1,5 @@
+# ensure only certain files in .vscode directory are kept
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json

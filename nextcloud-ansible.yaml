@@ -8,28 +8,28 @@
   tasks:
 
     - name: Setup network for Nextcloud
-      docker_network:
+      community.docker.docker_network:
         name: nextcloud-net
         state: "{{ sso_network_state | default('present') }}"
 
     - name: Setup volume for Postgres
-      docker_volume:
+      community.docker.docker_volume:
         name: postgres-data
         state: "{{ sso_volume_state | default('present') }}"
 
     - name: Setup volume for Nextcloud
-      docker_volume:
+      community.docker.docker_volume:
         name: nextcloud-data
         state: "{{ sso_volume_state | default('present') }}"
 
     - name: Check if Nextcloud DB is running
-      docker_container_info:
+      community.docker.docker_container_info:
         name: nextcloud-db
       register: nextcloud_db_state
 
     - block:
         - name: Start Nextcloud DB
-          docker_container:
+          community.docker.docker_container:
             name: nextcloud-db
             image: postgres
             volumes:
@@ -45,31 +45,35 @@
               POSTGRES_PASSWORD: nextcloud
           register: nextcloud_db_register
 
-      #   - name: Wait for nextcloud DB to accept connections
-      #     wait_for:
-      #       host: "{{ nextcloud_db_register['ansible_facts']\
-      #         ['docker_container']\
-      #         ['NetworkSettings']\
-      #         ['Networks']\
-      #         ['nextcloud-net']\
-      #         ['IPAddress'] }}"
-      #       port: 5432
-      #       state: started
-      #       connect_timeout: 1
-      #       timeout: 30
-      #     register: nextcloud_db_running
-      #     until: nextcloud_db_running is success
-      #     retries: 10
-      # when: not nextcloud_db_state.exists
+        - name: nextcloud_db_register
+          ansible.builtin.debug:
+            var: nextcloud_db_register
+
+        - name: Wait for nextcloud DB to accept connections
+          ansible.builtin.wait_for:
+            # host: "{{ nextcloud_db_register['container']\
+            #   ['NetworkSettings']\
+            #   ['Networks']\
+            #   ['nextcloud-net']\
+            #   ['IPAddress'] }}"
+            host: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            port: 5432
+            state: started
+            connect_timeout: 1
+            timeout: 30
+          register: nextcloud_db_running
+          until: nextcloud_db_running is success
+          retries: 10
+      when: not nextcloud_db_state.exists
 
     - name: Check if Nextcloud is running
-      docker_container_info:
+      community.docker.docker_container_info:
         name: nextcloud
       register: nextcloud_state
 
     - block:
         - name: Start nextcloud
-          docker_container:
+          community.docker.docker_container:
             name: nextcloud
             image: nextcloud
             networks_cli_compatible: true
@@ -94,15 +98,19 @@
               NEXTCLOUD_ADMIN_USER: nextcloud
           register: nextcloud_register
 
+        - name: nextcloud_register
+          ansible.builtin.debug:
+            var: nextcloud_register
+
         - name: Wait for nextcloud to accept connections
-          wait_for:
-            host: "{{ nextcloud_register['ansible_facts']\
-              ['docker_container']\
-              ['NetworkSettings']\
-              ['Networks']\
-              ['nextcloud-net']\
-              ['IPAddress'] }}"
-            port: 8080
+          ansible.builtin.wait_for:
+            # host: "{{ nextcloud_register['container']\
+            #   ['NetworkSettings']\
+            #   ['Networks']\
+            #   ['nextcloud-net']\
+            #   ['IPAddress'] }}"
+            host: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            port: 8081
             state: started
             connect_timeout: 1
             timeout: 30
