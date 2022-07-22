@@ -1,0 +1,275 @@
+---
+
+# Source: https://dev.to/kuwv/why-i-use-ansible-over-docker-compose-edg
+
+- name: Run Nextcloud Stack
+
+  hosts: localhost
+
+  vars:
+
+  pre_tasks:
+
+    - name: Check for dependent python modules
+      community.general.python_requirements_info:
+        dependencies:
+          - docker>=5.0.0
+      tags:
+        - always
+
+    # - name: create configuration directory for user
+    #   ansible.builtin.user:
+    #     name: "{{ ansible_user }}"
+    #     state: present
+    #   register: ansible_user_registered
+    #   tags:
+    #     - always
+    #   when: 0
+
+    - name: Run message
+      ansible.builtin.debug:
+        msg: "Running on host {{ ansible_hostname }} via {{ ansible_default_ipv4.interface }} @ {{ ansible_default_ipv4.address }} as user {{ ansible_user_id }}"
+      tags:
+        - always
+
+  tasks:
+
+    ####### NEXTCLOUD NETWORK SECTION
+
+    - name: Set Nextcloud network facts
+      ansible.builtin.set_fact:
+        nextcloud_network_name: nextcloud-network
+
+    - name: Create a Nextcloud network
+      community.docker.docker_network:
+        name: "{{ nextcloud_network_name | default('nextcloud-network') }}"
+        internal: false
+
+    ####### NEXTCLOUD DB SECTION
+
+    # https://hub.docker.com/_/postgres
+
+    - name: Set Nextcloud DB facts
+      ansible.builtin.set_fact:
+        nextcloud_db_image_name: postgres
+        nextcloud_db_image_tag: latest
+        nextcloud_db_container_name: nextcloud-db
+        nextcloud_db_container_port: 5432
+        nextcloud_db_volume: nextcloud-volume
+      tags:
+        - postgres
+        - nextcloud-db
+        - nextcloud
+
+    - name: Create Nextcloud volume
+      community.docker.docker_volume:
+        name: "{{ nextcloud_db_volume }}"
+        state: present
+      tags:
+        - postgres
+        - nextcloud-db
+        - nextcloud
+
+    - name: Check if Nextcloud DB is running
+      community.docker.docker_container_info:
+        name: "{{ nextcloud_db_container_name }}"
+      register: nextcloud_db_state
+      tags:
+        - postgres
+        - nextcloud-db
+        - nextcloud
+
+    - block:
+
+        - name: Pull Nextcloud DB image
+          community.docker.docker_image:
+            name: "{{ nextcloud_db_image_name }}:{{ nextcloud_db_image_tag | default('latest') }}"
+            source: pull
+          tags:
+            - postgres
+            - nextcloud-db
+            - nextcloud
+
+        - name: Start Nextcloud DB
+          community.docker.docker_container:
+            name: "{{ nextcloud_db_container_name | default('nextcloud-db') }}"
+            image: "{{ nextcloud_db_image_name }}:{{ nextcloud_db_image_tag | default('latest') }}"
+            detach: true
+            env:
+              NEXTCLOUD_DB_DB: nextcloud
+              NEXTCLOUD_DB_USER: nextcloud
+              NEXTCLOUD_DB_PASSWORD: nextcloud
+            networks_cli_compatible: true
+            networks:
+              - name: "{{ nextcloud_network_name }}"
+            published_ports:
+              - "{{ nextcloud_db_container_port | default(5432) }}:5432"
+            volumes:
+              - "{{ nextcloud_db_volume }}:/var/lib/postresql/data"
+          register: nextcloud_db_register
+          tags:
+            - postgres
+            - nextcloud-db
+            - nextcloud
+
+        - name: Wait for nextcloud DB to accept connections
+          ansible.builtin.wait_for:
+            host: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            port: "{{ nextcloud_db_container_port | default(5432) }}"
+            connect_timeout: 1
+            delay: 10
+            state: started
+            timeout: 30
+          register: nextcloud_db_running
+          retries: 10
+          until: nextcloud_db_running is success
+      when: not nextcloud_db_state.exists
+
+    ####### NEXTCLOUD SECTION
+
+    # https://hub.docker.com/_/nextcloud
+
+    - name: Set Nextcloud facts
+      ansible.builtin.set_fact:
+        nextcloud_image_name: nextcloud
+        nextcloud_image_tag: latest
+        nextcloud_container_name: nextcloud
+        nextcloud_container_port: 8888
+        nextcloud_volume: nextcloud-volume
+      tags:
+        - nextcloud
+
+    - name: Create Nextcloud volume
+      community.docker.docker_volume:
+        name: "{{ nextcloud_volume }}"
+        state: present
+      tags:
+        - nextcloud
+
+    - name: Check if Nextcloud is running
+      community.docker.docker_container_info:
+        name: "{{ nextcloud_container_name }}"
+      register: nextcloud_state
+      tags:
+        - nextcloud
+
+    - block:
+
+        - name: Pull Nextcloud image
+          community.docker.docker_image:
+            name: "{{ nextcloud_image_name }}:{{ nextcloud_image_tag | default('latest') }}"
+            source: pull
+          tags:
+            - nextcloud
+
+        - name: Start Nextcloud
+          community.docker.docker_container:
+            name: "{{ nextcloud_container_name }}"
+            image: "{{ nextcloud_image_name }}:{{ nextcloud_image_tag | default('latest') }}"
+            detach: true
+            env:
+              NEXTCLOUD_DB_HOST: "{{ nextcloud_db_container_name }}"
+              NEXTCLOUD_DB_DB: nextcloud
+              NEXTCLOUD_DB_USER: nextcloud
+              NEXTCLOUD_DB_PASSWORD: nextcloud
+              NEXTCLOUD_ADMIN_PASSWORD: nextcloud
+              NEXTCLOUD_ADMIN_USER: nextcloud
+              NEXTCLOUD_TRUSTED_DOMAINS: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            networks_cli_compatible: true
+            networks:
+              - name: "{{ nextcloud_network_name }}"
+                links:
+                  - "{{ nextcloud_db_container_name }}"
+            published_ports:
+              - "{{ nextcloud_container_port | default(80) }}:80"
+            volumes:
+              - "{{ nextcloud_volume }}:/var/www/html"
+          register: nextcloud_register
+          tags:
+            - nextcloud
+
+        - name: Wait for Nextcloud to accept connections
+          ansible.builtin.wait_for:
+            host: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            port: "{{ nextcloud_container_port | default(80) }}"
+            connect_timeout: 1
+            delay: 10
+            state: started
+            timeout: 30
+          register: nextcloud_running
+          until: nextcloud_running is success
+          retries: 10
+          tags:
+            - nextcloud
+
+      when: not nextcloud_state.exists
+
+    ####### NEXTCLOUD-EXPORTER SECTION
+
+    - name: Set Nextcloud-Exporter facts
+      ansible.builtin.set_fact:
+        nextcloud_exporter_image_name: xperimental/nextcloud-exporter
+        nextcloud_exporter_image_tag: latest
+        nextcloud_exporter_container_name: nextcloud-exporter
+        nextcloud_exporter_container_port: 9205
+      tags:
+        - nextcloud-exporter
+        - nextcloud
+
+    - name: Check if Nextcloud-Exporter is running
+      community.docker.docker_container_info:
+        name: "{{ nextcloud_exporter_container_name }}"
+      register: nextcloud_exporter_state
+      tags:
+        - nextcloud-exporter
+        - nextcloud
+
+    - block:
+
+        - name: Pull Nextcloud-Exporter image
+          community.docker.docker_image:
+            name: "{{ nextcloud_exporter_image_name }}:{{ nextcloud_exporter_image_tag | default('latest') }}"
+            source: pull
+          tags:
+            - nextcloud-exporter
+            - nextcloud
+
+        - name: Start Nextcloud-Exporter
+          community.docker.docker_container:
+            name: "{{ nextcloud_exporter_container_name }}"
+            image: "{{ nextcloud_exporter_image_name }}:{{ nextcloud_exporter_image_tag | default('latest') }}"
+            detach: true
+            env:
+              NEXTCLOUD_SERVER: "{{ nextcloud_container_name }}"
+              NEXTCLOUD_USERNAME: nextcloud
+              NEXTCLOUD_PASSWORD: nextcloud
+              NEXTCLOUD_AUTH_TOKEN: nextcloud
+              NEXTCLOUD_LISTEN_ADDRESS: nextcloud
+              NEXTCLOUD_TIMEOUT: nextcloud
+              NEXTCLOUD_TLS_SKIP_VERIFY: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            networks_cli_compatible: true
+            networks:
+              - name: "{{ nextcloud_network_name }}"
+            published_ports:
+              - "{{ nextcloud_exporter_container_port | default(9205) }}:9205"
+          register: nextcloud_exporter_register
+          tags:
+            - nextcloud-exporter
+            - nextcloud
+
+        - name: Wait for Nextcloud-Exporter to accept connections
+          ansible.builtin.wait_for:
+            host: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+            port: "{{ nextcloud_exporter_container_port | default(9205) }}"
+            connect_timeout: 1
+            delay: 10
+            state: started
+            timeout: 30
+          register: nextcloud_exporter_running
+          until: nextcloud_exporter_running is success
+          retries: 10
+          tags:
+            - nextcloud-exporter
+            - nextcloud
+
+      when: not nextcloud_exporter_state.exists
