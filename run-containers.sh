@@ -2,4 +2,4 @@
 
 #docker-compose -f nextcloud.yaml up
 
-ansible-playbook nextcloud-ansible.yaml
+ansible-playbook nextcloud.yaml

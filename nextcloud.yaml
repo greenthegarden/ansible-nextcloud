@@ -96,9 +96,9 @@
             image: "{{ nextcloud_db_image_name }}:{{ nextcloud_db_image_tag | default('latest') }}"
             detach: true
             env:
-              NEXTCLOUD_DB_DB: nextcloud
-              NEXTCLOUD_DB_USER: nextcloud
-              NEXTCLOUD_DB_PASSWORD: nextcloud
+              POSTGRES_DB: nextcloud
+              POSTGRES_USER: nextcloud
+              POSTGRES_PASSWORD: nextcloud
             networks_cli_compatible: true
             networks:
               - name: "{{ nextcloud_network_name }}"
@@ -112,7 +112,7 @@
             - nextcloud-db
             - nextcloud
 
-        - name: Wait for nextcloud DB to accept connections
+        - name: Wait for Nextcloud DB to accept connections
           ansible.builtin.wait_for:
             host: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
             port: "{{ nextcloud_db_container_port | default(5432) }}"
@@ -134,7 +134,7 @@
         nextcloud_image_name: nextcloud
         nextcloud_image_tag: latest
         nextcloud_container_name: nextcloud
-        nextcloud_container_port: 8888
+        nextcloud_container_port: 8081
         nextcloud_volume: nextcloud-volume
       tags:
         - nextcloud
@@ -168,10 +168,10 @@
             image: "{{ nextcloud_image_name }}:{{ nextcloud_image_tag | default('latest') }}"
             detach: true
             env:
-              NEXTCLOUD_DB_HOST: "{{ nextcloud_db_container_name }}"
-              NEXTCLOUD_DB_DB: nextcloud
-              NEXTCLOUD_DB_USER: nextcloud
-              NEXTCLOUD_DB_PASSWORD: nextcloud
+              POSTGRES_HOST: "{{ nextcloud_db_container_name }}"
+              POSTGRES_DB: nextcloud
+              POSTGRES_USER: nextcloud
+              POSTGRES_PASSWORD: nextcloud
               NEXTCLOUD_ADMIN_PASSWORD: nextcloud
               NEXTCLOUD_ADMIN_USER: nextcloud
               NEXTCLOUD_TRUSTED_DOMAINS: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
@@ -240,13 +240,13 @@
             image: "{{ nextcloud_exporter_image_name }}:{{ nextcloud_exporter_image_tag | default('latest') }}"
             detach: true
             env:
-              NEXTCLOUD_SERVER: "{{ nextcloud_container_name }}"
+              NEXTCLOUD_SERVER: "http://{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}:8081"
               NEXTCLOUD_USERNAME: nextcloud
               NEXTCLOUD_PASSWORD: nextcloud
-              NEXTCLOUD_AUTH_TOKEN: nextcloud
-              NEXTCLOUD_LISTEN_ADDRESS: nextcloud
-              NEXTCLOUD_TIMEOUT: nextcloud
-              NEXTCLOUD_TLS_SKIP_VERIFY: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+              # NEXTCLOUD_AUTH_TOKEN: nextcloud
+              # NEXTCLOUD_LISTEN_ADDRESS: ":9205"
+              # NEXTCLOUD_TIMEOUT: 10s
+              NEXTCLOUD_TLS_SKIP_VERIFY: "true"
             networks_cli_compatible: true
             networks:
               - name: "{{ nextcloud_network_name }}"
