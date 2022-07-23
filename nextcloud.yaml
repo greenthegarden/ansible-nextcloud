@@ -104,6 +104,9 @@
               - name: "{{ nextcloud_network_name }}"
             published_ports:
               - "{{ nextcloud_db_container_port | default(5432) }}:5432"
+            restart: true
+            restart_policy: unless-stopped
+            state: started
             volumes:
               - "{{ nextcloud_db_volume }}:/var/lib/postresql/data"
           register: nextcloud_db_register
@@ -182,6 +185,9 @@
                   - "{{ nextcloud_db_container_name }}"
             published_ports:
               - "{{ nextcloud_container_port | default(80) }}:80"
+            restart: true
+            restart_policy: unless-stopped
+            state: started
             volumes:
               - "{{ nextcloud_volume }}:/var/www/html"
           register: nextcloud_register
@@ -252,6 +258,9 @@
               - name: "{{ nextcloud_network_name }}"
             published_ports:
               - "{{ nextcloud_exporter_container_port | default(9205) }}:9205"
+            restart: true
+            restart_policy: unless-stopped
+            state: started
           register: nextcloud_exporter_register
           tags:
             - nextcloud-exporter
